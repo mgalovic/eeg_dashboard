@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local environment / secrets
+.env
+*.local
+
+# Data files (do not commit patient data)
+*.xlsx
+*.xls
+*.csv
+data/

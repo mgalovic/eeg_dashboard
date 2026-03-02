@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EEG Dashboard · USZ Epilepsy Unit</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Upload Screen ──────────────────────────────────────────────── -->
+  <div id="screen-upload" class="screen active">
+
+    <header class="app-header">
+      <div class="header-brand">
+        <svg class="brand-icon" viewBox="0 0 64 22" fill="none" aria-hidden="true">
+          <polyline points="0,11 8,11 11,3 14,19 17,8 20,14 23,11 32,11 36,2 40,20 44,11 52,11 55,5 58,11 64,11"
+                    stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div>
+          <span class="brand-title">EEG Dashboard</span>
+          <span class="brand-sub">Epilepsy &amp; EEG Unit · USZ</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="about-btn-upload" type="button">About</button>
+      </div>
+    </header>
+
+    <main class="upload-main">
+      <div class="upload-card">
+
+        <!-- Drop zone -->
+        <div class="upload-zone" id="upload-zone" tabindex="0" role="button"
+             aria-label="Upload Excel file — click or drag and drop">
+          <div class="upload-icon-wrap" aria-hidden="true">
+            <svg viewBox="0 0 52 52" fill="none">
+              <rect x="6" y="2" width="40" height="48" rx="5" stroke="currentColor" stroke-width="2"/>
+              <path d="M17 34 L26 24 L35 34" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="26" y1="24" x2="26" y2="42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="17" y1="13" x2="35" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="17" y1="19" x2="27" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h2 class="upload-title">Upload EEG Report Export</h2>
+          <p class="upload-desc">Drag and drop your Excel file here, or click to browse</p>
+          <p class="upload-hint">
+            Export from <strong>Alles1</strong> in the MS Access EEG database — past 24 months.<br>
+            Required columns: <code>Datum</code> · <code>AA</code> · <code>OA</code><br>
+            <span class="upload-privacy">&#9888; Never upload identifiable patient data!</span>
+          </p>
+          <button class="btn btn-primary" id="browse-btn" type="button">Choose File</button>
+          <input type="file" id="file-input" accept=".xlsx,.xls" aria-hidden="true">
+        </div>
+
+        <!-- Status bar (shown while parsing) -->
+        <div class="parse-status" id="parse-status" hidden>
+          <div class="spinner"></div>
+          <span id="parse-message">Reading file…</span>
+        </div>
+
+        <!-- Saved snapshots (shown if any exist in localStorage) -->
+        <div class="saved-section" id="saved-section" hidden>
+          <p class="section-label">Recent Datasets</p>
+          <ul class="snapshot-list" id="snapshot-list"></ul>
+        </div>
+
+      </div>
+    </main>
+
+  </div><!-- /screen-upload -->
+
+
+  <!-- ── Results Screen ─────────────────────────────────────────────── -->
+  <div id="screen-results" class="screen">
+
+    <header class="app-header">
+      <div class="header-brand">
+        <svg class="brand-icon" viewBox="0 0 64 22" fill="none" aria-hidden="true">
+          <polyline points="0,11 8,11 11,3 14,19 17,8 20,14 23,11 32,11 36,2 40,20 44,11 52,11 55,5 58,11 64,11"
+                    stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div>
+          <span class="brand-title">EEG Dashboard</span>
+          <span class="brand-sub">Epilepsy &amp; EEG Unit · USZ</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+
+        <button class="btn btn-ghost btn-sm" id="about-btn-results" type="button">About</button>
+
+        <!-- Dataset switcher -->
+        <div class="ds-switcher" id="ds-switcher">
+          <button class="ds-trigger" id="ds-trigger" type="button"
+                  aria-haspopup="true" aria-expanded="false"
+                  aria-label="Switch dataset">
+            <!-- database icon -->
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                 stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"
+                 width="14" height="14" aria-hidden="true">
+              <ellipse cx="8" cy="4.5" rx="5.5" ry="2"/>
+              <path d="M2.5 4.5v3c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-3"/>
+              <path d="M2.5 7.5v3c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-3"/>
+            </svg>
+            <span class="ds-trigger-name" id="active-dataset-label">No dataset</span>
+            <svg class="ds-chevron" viewBox="0 0 10 6" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                 aria-hidden="true">
+              <path d="M1 1l4 4 4-4"/>
+            </svg>
+          </button>
+
+          <!-- Dropdown panel -->
+          <div class="ds-dropdown" id="ds-dropdown" hidden role="listbox">
+            <div class="ds-dropdown-hd">
+              <span class="ds-hd-title">Saved Datasets</span>
+              <span class="ds-usage" id="ds-usage"></span>
+            </div>
+            <ul class="ds-list" id="ds-list"></ul>
+            <div class="ds-dropdown-ft">
+              <button class="btn btn-ghost btn-sm" id="upload-another-btn" type="button">
+                Upload new file…
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- /dataset switcher -->
+
+      </div>
+    </header>
+
+    <div class="results-layout">
+
+      <!-- ── Doctor sidebar ───────────────────────────────────────────── -->
+      <aside class="doctor-sidebar">
+        <div class="sidebar-top">
+          <p class="section-label">Assistant Doctors</p>
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M10 10 L13.5 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <input type="search" id="doctor-search" class="search-input"
+                   placeholder="Filter doctors…" autocomplete="off" aria-label="Filter doctor list">
+          </div>
+        </div>
+        <div class="sidebar-legend">
+          <span class="legend-dot" data-status="green"></span>On track
+          <span class="legend-dot" data-status="amber"></span>Behind
+          <span class="legend-dot" data-status="red"></span>At risk
+        </div>
+        <ul class="doctor-list" id="doctor-list" role="listbox" aria-label="Assistant doctors"></ul>
+      </aside>
+
+      <!-- ── Chart panel ──────────────────────────────────────────────── -->
+      <main class="chart-panel">
+
+        <!-- View toggle tabs (hidden until a dataset is loaded) -->
+        <div class="view-tabs" id="view-tabs" hidden>
+          <button class="view-tab active" data-view="individual" type="button">Individual Doctor</button>
+          <button class="view-tab" data-view="dept" type="button">Department</button>
+        </div>
+
+        <!-- ── Individual doctor view ──────────────────────────────── -->
+        <div id="individual-view">
+
+          <!-- Empty state (shown before any doctor is selected) -->
+          <div class="empty-state" id="empty-state">
+            <svg class="empty-icon" viewBox="0 0 80 64" fill="none" aria-hidden="true">
+              <rect x="4"  y="40" width="12" height="20" rx="2" fill="currentColor" opacity=".15"/>
+              <rect x="20" y="26" width="12" height="34" rx="2" fill="currentColor" opacity=".25"/>
+              <rect x="36" y="14" width="12" height="46" rx="2" fill="currentColor" opacity=".40"/>
+              <rect x="52" y="30" width="12" height="30" rx="2" fill="currentColor" opacity=".20"/>
+              <rect x="68" y="20" width="12" height="40" rx="2" fill="currentColor" opacity=".30"/>
+            </svg>
+            <p class="empty-text">Select a doctor from the list to view their EEG report data.</p>
+          </div>
+
+          <!-- Doctor detail (shown after selection) -->
+          <div class="doctor-detail" id="doctor-detail" hidden>
+
+            <!-- Name + date range -->
+            <div class="detail-header">
+              <div class="detail-title-row">
+                <h2 class="detail-name" id="detail-name"></h2>
+                <span class="detail-period" id="detail-period"></span>
+              </div>
+
+              <!-- Period / target controls -->
+              <div class="period-bar">
+                <span class="period-bar-label">Rotation period</span>
+                <div class="period-presets" id="period-presets">
+                  <button class="period-btn active" data-months="6" type="button">
+                    6 months <em>100% FTE</em>
+                  </button>
+                  <button class="period-btn" data-months="12" type="button">
+                    12 months <em>50% FTE</em>
+                  </button>
+                </div>
+                <div class="period-custom-wrap">
+                  <input type="number" id="period-input" class="period-input"
+                         value="6" min="1" max="36" aria-label="Custom rotation length in months">
+                  <span class="period-unit">months</span>
+                </div>
+                <div class="period-divider"></div>
+                <span class="period-bar-label">Target</span>
+                <input type="number" id="target-input" class="period-input target-input"
+                       value="800" min="1" max="9999" aria-label="Target EEG count">
+                <span class="period-unit">EEGs</span>
+              </div>
+
+              <!-- Stat chips -->
+              <div class="stat-row" id="detail-stats"></div>
+
+              <!-- Status banner -->
+              <div class="status-banner" id="status-banner" hidden>
+                <span class="status-dot-lg" id="status-dot-lg"></span>
+                <div class="status-text">
+                  <span class="status-title" id="status-title"></span>
+                  <span class="status-desc"  id="status-desc"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bar chart -->
+            <div class="chart-section">
+              <p class="chart-label">EEG reports per month</p>
+              <div class="chart-wrap">
+                <canvas id="monthly-chart"></canvas>
+              </div>
+            </div>
+
+          </div><!-- /doctor-detail -->
+
+        </div><!-- /individual-view -->
+
+        <!-- ── Department overview view ────────────────────────────── -->
+        <div class="dept-view" id="dept-view" hidden>
+
+          <div class="dept-header">
+            <h2 class="dept-title">Department Overview</h2>
+            <div class="dept-actions">
+              <button class="btn btn-ghost btn-sm" id="export-csv-btn" type="button">Export CSV</button>
+              <button class="btn btn-ghost btn-sm" id="print-btn" type="button">Print</button>
+            </div>
+          </div>
+
+          <!-- Unit monthly summary chart -->
+          <div class="chart-section">
+            <p class="chart-label">Total EEG reports per month (all assistant doctors)</p>
+            <div class="chart-wrap">
+              <canvas id="unit-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Overview table -->
+          <div class="overview-table-wrap">
+            <div class="table-info" id="table-info"></div>
+            <table class="overview-table" id="overview-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-col="name">Name <span class="sort-arrow"></span></th>
+                  <th class="sortable" data-col="first">First Report <span class="sort-arrow"></span></th>
+                  <th class="sortable num" data-col="total">Total EEGs <span class="sort-arrow"></span></th>
+                  <th class="sortable num" data-col="avg">Avg / Month <span class="sort-arrow"></span></th>
+                  <th class="sortable num" data-col="projected">Projected <span class="sort-arrow"></span></th>
+                  <th class="sortable" data-col="status">Status <span class="sort-arrow"></span></th>
+                </tr>
+              </thead>
+              <tbody id="overview-tbody"></tbody>
+            </table>
+          </div>
+
+        </div><!-- /dept-view -->
+
+      </main><!-- /chart-panel -->
+
+    </div><!-- /results-layout -->
+
+  </div><!-- /screen-results -->
+
+</div><!-- /app -->
+
+<!-- ── Help / About modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="about-modal" hidden role="dialog" aria-modal="true" aria-labelledby="about-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 class="modal-title" id="about-title">About · EEG Dashboard</h2>
+      <button class="modal-close" id="about-close" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+
+      <h3>What is measured</h3>
+      <p>Each row in the export represents one EEG report session. A doctor is credited with a report whenever their name appears in either the <strong>AA</strong> or <strong>OA</strong> column for that date. Role classification (assistant vs. consultant) is based on job-title keywords in the cell, not on column position.</p>
+
+      <h3>Who is shown</h3>
+      <p>Only doctors who meet <em>both</em> activity thresholds are listed:</p>
+      <ul>
+        <li><strong>&gt; 35 reports total</strong> in the loaded dataset</li>
+        <li><strong>&gt; 20 reports in the last 6 calendar months</strong></li>
+      </ul>
+      <p>Both assistant doctors (<em>Assistenzarzt/ärztin</em>) and rotation consultants (<em>Oberarzt/in</em>, <em>Facharzt/in</em>, &hellip;) are included.</p>
+
+      <h3>Monthly rate &amp; projection</h3>
+      <p>The monthly rate is the total divided by the number of <strong>active months</strong> — months with more than 5 reports. This prevents a rotation break from artificially lowering the rate. The <em>current calendar month</em> is always counted as active (even if incomplete), so a recently returned doctor is not penalised.</p>
+      <p>Projection = rate &times; rotation-period months. Adjust the period (6 / 12 / custom) and the target (default 800) in the individual-doctor panel.</p>
+
+      <h3>Status colours</h3>
+      <ul>
+        <li><strong class="about-green">Green — On track</strong>: projected &ge; target</li>
+        <li><strong class="about-amber">Amber — Behind</strong>: projected &ge; 80&thinsp;% of target</li>
+        <li><strong class="about-red">Red — At risk</strong>: projected &lt; 80&thinsp;% of target</li>
+      </ul>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>Role classification relies on keyword matching — unusual job titles may be mis-categorised.</li>
+        <li>The projection assumes a constant future rate equal to past performance.</li>
+        <li>Doctors with fewer than 35 total reports will not appear until they cross the threshold.</li>
+        <li>Data is only as current as the last uploaded export.</li>
+      </ul>
+
+      <h3>Loading new data</h3>
+      <p>Click the <strong>dataset switcher</strong> (database icon, top right on the results screen) &rarr; <em>Upload new file&hellip;</em> to add a fresh export. Old snapshots can be renamed, annotated, or deleted from the same dropdown.</p>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<!-- ── Libraries (CDN) ──────────────────────────────────────────────── -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<!-- ── App modules ─────────────────────────────────────────────────── -->
+<script src="js/parser.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
