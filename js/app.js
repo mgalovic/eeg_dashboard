@@ -173,14 +173,11 @@ const App = (() => {
     dropdownOpen ? closeDropdown() : openDropdown();
   }
 
-  /** Render the storage usage pill in the dropdown header. */
+  /** Render the snapshot-count pill in the dropdown header. */
   function renderUsageIndicator() {
     const u = Storage.getUsageSummary();
-    dom.dsUsage.textContent = u.label + ' used';
-    dom.dsUsage.className   = 'ds-usage' + (u.overLimit ? ' crit' : u.nearLimit ? ' warn' : '');
-    if (u.nearLimit && !u.overLimit) {
-      toast('Storage is getting full (>4 MB). Consider deleting old datasets.', 'error', 7000);
-    }
+    dom.dsUsage.textContent = u.label + ' saved';
+    dom.dsUsage.className   = 'ds-usage' + (u.count >= u.max ? ' warn' : '');
   }
 
   /** Rebuild the dropdown snapshot list. */

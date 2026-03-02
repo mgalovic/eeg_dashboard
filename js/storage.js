@@ -4,6 +4,9 @@
  * Persists parsed datasets in localStorage so the app works across
  * page reloads without requiring a new file upload.
  *
+ * At most MAX_SNAPSHOTS datasets are kept; saving a new one automatically
+ * evicts the oldest so storage never fills up.
+ *
  * Storage layout:
  *   eeg_index            — JSON array of snapshot IDs (newest first)
  *   eeg_snap_meta_{id}   — lightweight metadata object (fast to list)
@@ -14,12 +17,10 @@
 
 const Storage = (() => {
 
-  const INDEX_KEY   = 'eeg_index';
-  const META_PREFIX = 'eeg_snap_meta_';
-  const DATA_PREFIX = 'eeg_snap_data_';
-
-  const WARN_BYTES  = 4   * 1024 * 1024;   // 4 MB  — show usage warning
-  const LIMIT_BYTES = 4.8 * 1024 * 1024;   // 4.8 MB — block new saves
+  const INDEX_KEY    = 'eeg_index';
+  const META_PREFIX  = 'eeg_snap_meta_';
+  const DATA_PREFIX  = 'eeg_snap_data_';
+  const MAX_SNAPSHOTS = 3;   // keep the 3 most recent uploads
 
 
   /* ── Private helpers ────────────────────────────────────────────── */
@@ -37,13 +38,10 @@ const Storage = (() => {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
-  /** Approximate localStorage usage in bytes (UTF-16 × 2). */
-  function _estimateBytes() {
-    let n = 0;
-    for (const k of Object.keys(localStorage)) {
-      n += (k.length + (localStorage.getItem(k) ?? '').length) * 2;
-    }
-    return n;
+  /** Remove a single snapshot's keys without touching the index. */
+  function _deleteKeys(id) {
+    localStorage.removeItem(META_PREFIX + id);
+    localStorage.removeItem(DATA_PREFIX + id);
   }
 
 
@@ -51,34 +49,30 @@ const Storage = (() => {
 
   /**
    * Save a parsed dataset and return its snapshot id.
+   * If there are already MAX_SNAPSHOTS saved, the oldest is deleted first.
    *
    * @param {{ records, meta }} parsed — output of Parser.parseWorkbook()
    * @param {string}            label  — human-readable name (usually filename)
    * @returns {string} snapshot id
-   * @throws if localStorage is full
+   * @throws if localStorage is unavailable or write fails
    */
   function save(parsed, label) {
     const id  = generateId();
     const now = new Date();
     const { records, meta } = parsed;
 
-    // Check space before writing
-    if (_estimateBytes() > LIMIT_BYTES) {
-      throw new Error('Storage is nearly full. Please delete an old dataset first.');
-    }
-
     const snapshotMeta = {
       id,
-      label:          label || meta.filename || 'Dataset',
-      filename:       meta.filename,
-      savedAt:        now.toISOString(),
-      notes:          '',                         // user-editable note
-      validRecords:   meta.validRecords,
-      assistantCount: meta.assistants.length,
-      consultantCount:meta.consultants.length,
-      allDoctorCount: meta.allDoctors?.length ?? (meta.assistants.length + meta.consultants.length),
-      dateMin:        meta.dateMin?.toISOString() ?? null,
-      dateMax:        meta.dateMax?.toISOString() ?? null,
+      label:           label || meta.filename || 'Dataset',
+      filename:        meta.filename,
+      savedAt:         now.toISOString(),
+      notes:           '',                         // user-editable note
+      validRecords:    meta.validRecords,
+      assistantCount:  meta.assistants.length,
+      consultantCount: meta.consultants.length,
+      allDoctorCount:  meta.allDoctors?.length ?? (meta.assistants.length + meta.consultants.length),
+      dateMin:         meta.dateMin?.toISOString() ?? null,
+      dateMax:         meta.dateMax?.toISOString() ?? null,
     };
 
     const serialisedRecords = records.map(r => ({
@@ -93,14 +87,19 @@ const Storage = (() => {
     });
 
     try {
+      // Evict oldest snapshots until we are below the cap
+      const index = getIndex();
+      while (index.length >= MAX_SNAPSHOTS) {
+        _deleteKeys(index.pop());          // pop = oldest (index is newest-first)
+      }
+
       localStorage.setItem(META_PREFIX + id, JSON.stringify(snapshotMeta));
       localStorage.setItem(DATA_PREFIX + id, dataPayload);
-      const index = getIndex();
-      index.unshift(id);
+      index.unshift(id);                   // newest at front
       setIndex(index);
     } catch (e) {
       console.warn('[Storage] Save failed:', e.message);
-      throw new Error('Storage is full. Please delete an old dataset and try again.');
+      throw new Error('Could not save dataset. Browser storage may be unavailable or full.');
     }
 
     return id;
@@ -185,8 +184,7 @@ const Storage = (() => {
    * Delete a snapshot (both meta and data keys) and remove from index.
    */
   function remove(id) {
-    localStorage.removeItem(META_PREFIX + id);
-    localStorage.removeItem(DATA_PREFIX + id);
+    _deleteKeys(id);
     setIndex(getIndex().filter(i => i !== id));
   }
 
@@ -196,18 +194,15 @@ const Storage = (() => {
   }
 
   /**
-   * Return a storage usage summary suitable for display.
-   * { bytes, label, nearLimit, overLimit }
+   * Return a snapshot-count summary for display.
+   * { count, max, label }
    */
   function getUsageSummary() {
-    const bytes = _estimateBytes();
-    const mb    = bytes / (1024 * 1024);
-    const label = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+    const count = getIndex().length;
     return {
-      bytes,
-      label,
-      nearLimit: bytes > WARN_BYTES,
-      overLimit: bytes > LIMIT_BYTES,
+      count,
+      max:   MAX_SNAPSHOTS,
+      label: `${count} / ${MAX_SNAPSHOTS}`,
     };
   }
 
