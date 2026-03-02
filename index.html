@@ -49,10 +49,11 @@
           <p class="upload-hint">
             Export from <strong>Alles1</strong> in the MS Access EEG database — past 24 months.<br>
             Required columns: <code>Datum</code> · <code>AA</code> · <code>OA</code><br>
+            Or reload a previously downloaded <code>.json</code> snapshot.<br>
             <span class="upload-privacy">&#9888; Never upload identifiable patient data!</span>
           </p>
           <button class="btn btn-primary" id="browse-btn" type="button">Choose File</button>
-          <input type="file" id="file-input" accept=".xlsx,.xls" aria-hidden="true">
+          <input type="file" id="file-input" accept=".xlsx,.xls,.json" aria-hidden="true">
         </div>
 
         <!-- Status bar (shown while parsing) -->
@@ -123,6 +124,10 @@
             <div class="ds-dropdown-ft">
               <button class="btn btn-ghost btn-sm" id="upload-another-btn" type="button">
                 Upload new file…
+              </button>
+              <button class="btn btn-ghost btn-sm" id="download-snap-btn" type="button"
+                      title="Save the current dataset as a .json file you can reload in any browser">
+                Download snapshot
               </button>
             </div>
           </div>
@@ -325,6 +330,9 @@
 
       <h3>Loading new data</h3>
       <p>Click the <strong>dataset switcher</strong> (database icon, top right on the results screen) &rarr; <em>Upload new file&hellip;</em> to add a fresh export. Old snapshots can be renamed, annotated, or deleted from the same dropdown.</p>
+
+      <h3>Using on multiple browsers or devices</h3>
+      <p>Browser storage is local and isolated — data saved in Safari is not visible in Chrome, and private/incognito windows always start empty. To carry your data across browsers or devices, use <strong>Download snapshot</strong> in the dataset switcher to save a <code>.json</code> file, then drag it onto the upload zone in any browser to restore it instantly (no re-parsing of the Excel file needed).</p>
 
     </div>
   </div>

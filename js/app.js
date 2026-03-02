@@ -44,6 +44,7 @@ const App = (() => {
     dsUsage:            $('ds-usage'),
     activeDatasetLabel: $('active-dataset-label'),
     uploadAnotherBtn:   $('upload-another-btn'),
+    downloadSnapBtn:    $('download-snap-btn'),
     // Results screen — sidebar
     doctorSearch:       $('doctor-search'),
     doctorList:         $('doctor-list'),
@@ -827,8 +828,57 @@ const App = (() => {
   function handleFile(file) {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
+
+    // ── JSON snapshot import ──────────────────────────────────────────
+    if (ext === 'json') {
+      dom.parseStatus.hidden       = false;
+      dom.parseMessage.textContent = `Loading snapshot "${file.name}"…`;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const payload = JSON.parse(e.target.result);
+          if (!Array.isArray(payload.records) || !payload.meta) {
+            throw new Error('This does not look like an EEG Dashboard snapshot file.');
+          }
+
+          const records = payload.records.map(r => ({
+            date:        new Date(r.date),
+            assistants:  r.assistants  ?? [],
+            consultants: r.consultants ?? [],
+          }));
+          const meta = {
+            ...payload.meta,
+            dateMin: payload.meta.dateMin ? new Date(payload.meta.dateMin) : null,
+            dateMax: payload.meta.dateMax ? new Date(payload.meta.dateMax) : null,
+          };
+          const parsed = { records, meta };
+
+          let snapId = null;
+          try { snapId = Storage.save(parsed, meta.filename || file.name); }
+          catch (err) { toast(err.message, 'error', 6000); }
+
+          dom.parseStatus.hidden = true;
+          renderSnapshotList();
+          activateDataset(parsed, snapId);
+          toast(`Loaded ${records.length.toLocaleString()} records from snapshot.`, 'success');
+        } catch (err) {
+          dom.parseStatus.hidden = true;
+          toast(err.message || 'Failed to load snapshot file.', 'error', 7000);
+          console.error('[App] Snapshot import error:', err);
+        }
+      };
+      reader.onerror = () => {
+        dom.parseStatus.hidden = true;
+        toast('Could not read the file. Please try again.', 'error');
+      };
+      reader.readAsText(file);
+      return;
+    }
+
+    // ── Excel upload ──────────────────────────────────────────────────
     if (!['xlsx', 'xls'].includes(ext)) {
-      toast('Please upload an Excel file (.xlsx or .xls).', 'error');
+      toast('Please upload an Excel (.xlsx) or snapshot (.json) file.', 'error');
       return;
     }
 
@@ -866,6 +916,40 @@ const App = (() => {
       toast('Could not read the file. Please try again.', 'error');
     };
     reader.readAsArrayBuffer(file);
+  }
+
+
+  /* ── Download current snapshot as JSON ────────────────────────────── */
+  function downloadSnapshot() {
+    if (!activeDataset) return;
+    const { records, meta } = activeDataset;
+    const payload = {
+      version:  1,
+      exported: new Date().toISOString(),
+      meta: {
+        ...meta,
+        dateMin: meta.dateMin?.toISOString() ?? null,
+        dateMax: meta.dateMax?.toISOString() ?? null,
+      },
+      records: records.map(r => ({
+        date:        r.date.toISOString(),
+        assistants:  r.assistants,
+        consultants: r.consultants,
+      })),
+    };
+
+    const blob     = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = `eeg-snapshot-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast('Snapshot downloaded — drag it onto this page to reload in any browser.', 'success', 5000);
+    closeDropdown();
   }
 
 
@@ -943,6 +1027,8 @@ const App = (() => {
       closeDropdown();
       showScreen('upload');
     });
+
+    dom.downloadSnapBtn.addEventListener('click', downloadSnapshot);
 
     // ── Auto-load: open with the most recent dataset if one exists ──
     if (Storage.hasAny()) {

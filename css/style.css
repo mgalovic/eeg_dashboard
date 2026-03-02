@@ -1103,6 +1103,7 @@ html, body {
 .ds-dropdown-ft {
   padding: 8px 10px;
   border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
 }
 
 /* Empty state inside dropdown */
