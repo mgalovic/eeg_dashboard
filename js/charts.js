@@ -5,6 +5,7 @@
  * Stage 2: monthly bar chart.
  * Stage 3: required-rate reference line, future-month ghost bars.
  * Stage 5: unit summary line chart (department view).
+ * Stage 6: stacked modality bars (EEG/SEP/AEP/VEP), multi-line unit chart.
  */
 
 'use strict';
@@ -29,6 +30,16 @@ const Charts = (() => {
     redLine:      'rgba(220,38,38,0.70)',
   };
 
+  /* ── Modality colour palette ──────────────────────────────────────── */
+  const MOD_COLORS = {
+    EEG: { solid: '#2563eb', ghost: 'rgba(37,99,235,0.13)',   hover: '#1d4ed8' },
+    SEP: { solid: '#059669', ghost: 'rgba(5,150,105,0.15)',   hover: '#047857' },
+    AEP: { solid: '#ea580c', ghost: 'rgba(234,88,12,0.15)',   hover: '#c2410c' },
+    VEP: { solid: '#7c3aed', ghost: 'rgba(124,58,237,0.15)',  hover: '#6d28d9' },
+  };
+
+  const MODALITY_ORDER = ['EEG', 'SEP', 'AEP', 'VEP'];
+
   let _doctorChart = null;
   let _unitChart   = null;
 
@@ -38,16 +49,21 @@ const Charts = (() => {
   function _destroyUnit() {
     if (_unitChart) { _unitChart.destroy(); _unitChart = null; }
   }
-  function _destroyAll() {
-    _destroyDoctor();
-    _destroyUnit();
-  }
+  function _destroyAll() { _destroyDoctor(); _destroyUnit(); }
 
   /* ── Status → reference line colour ──────────────────────────────── */
   function _refColor(status) {
     return status === 'green' ? C.greenLine
          : status === 'amber' ? C.amberLine
          : C.redLine;
+  }
+
+  /* ── Hex → rgba helper ────────────────────────────────────────────── */
+  function _hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   /* ── Shared axis / plugin defaults ───────────────────────────────── */
@@ -86,11 +102,11 @@ const Charts = (() => {
           },
         },
         y: {
-          beginAtZero: true,
+          beginAtZero:  true,
           suggestedMax: yMax ? yMax * 1.15 : undefined,
-          grid:   { color: C.gridLine, drawBorder: false },
-          border: { display: false },
-          ticks:  { color: C.tickText, font: { size: 11.5 }, precision: 0 },
+          grid:         { color: C.gridLine, drawBorder: false },
+          border:       { display: false },
+          ticks:        { color: C.tickText, font: { size: 11.5 }, precision: 0 },
         },
       },
     };
@@ -99,69 +115,97 @@ const Charts = (() => {
 
   /* ── Monthly bar chart (individual doctor view) ───────────────────── */
   /**
+   * Renders a stacked bar chart broken down by modality.
+   *
    * @param {HTMLCanvasElement} canvas
-   * @param {string[]}  labels            — month labels
-   * @param {number[]}  counts            — EEG count per month
+   * @param {string[]}  labels  — month labels
+   * @param {object[]}  series  — items: { year, month, count, isFuture, EEG, SEP, AEP, VEP }
+   *                              (backward-compat: plain { count } items treated as EEG-only)
    * @param {object}    [opts]
-   * @param {number}    [opts.futureStart]    — index of first future month (those get ghost colour)
-   * @param {number}    [opts.requiredRate]   — horizontal reference line y value
-   * @param {string}    [opts.status]         — 'green'|'amber'|'red' (reference line colour)
+   * @param {number}    [opts.futureStart]  — index of first future month
+   * @param {number}    [opts.requiredRate] — horizontal reference line
+   * @param {string}    [opts.status]       — 'green'|'amber'|'red'
    */
-  function renderMonthlyBar(canvas, labels, counts, opts = {}) {
+  function renderMonthlyBar(canvas, labels, series, opts = {}) {
     _destroyDoctor();
 
     const { futureStart, requiredRate, status = 'red' } = opts;
 
-    // Bar colours: future months get a ghost style
-    const bgColors = counts.map((_, i) =>
-      (futureStart != null && i >= futureStart) ? C.blueFuture : C.blue
-    );
-    const hoverColors = counts.map((_, i) =>
-      (futureStart != null && i >= futureStart) ? 'rgba(37,99,235,0.25)' : C.blueHover
-    );
+    // Detect which modalities have data in this series
+    const hasModalityData   = series.length > 0 && series[0].EEG !== undefined;
+    const activeModalities  = hasModalityData
+      ? MODALITY_ORDER.filter(mod => series.some(m => (m[mod] ?? 0) > 0))
+      : ['EEG'];
 
-    // Determine a sensible y-axis ceiling
+    const counts  = series.map(m => m.count ?? 0);
     const dataMax = Math.max(...counts, requiredRate ?? 0);
     const options = _baseOptions(dataMax);
 
-    // Tooltip: show month + count, hide the reference line entry
+    // Enable stacking when multiple modalities are present
+    const stacked = activeModalities.length > 1;
+    if (stacked) {
+      options.scales.x.stacked = true;
+      options.scales.y.stacked = true;
+    }
+
+    // Show legend only when multiple modalities are visible
+    options.plugins.legend = {
+      display:  stacked,
+      position: 'top',
+      labels:   { boxWidth: 12, boxHeight: 12, padding: 14, font: { size: 12 } },
+    };
+
     options.plugins.tooltip.callbacks = {
-      title: ctx  => ctx[0]?.label ?? '',
-      label: ctx  => {
+      title: ctx => ctx[0]?.label ?? '',
+      label: ctx => {
         if (ctx.dataset.label === '_ref_hidden') return null;
         const n = ctx.parsed.y;
-        if (n === 0 && futureStart != null && ctx.dataIndex >= futureStart) return 'No reports yet';
-        return `${n} EEG${n !== 1 ? 's' : ''}`;
+        if (n === 0) return null;
+        return `${ctx.dataset.label}: ${n}`;
+      },
+      footer: ctx => {
+        if (!stacked) return undefined;
+        const total = ctx.reduce((s, item) => s + (item.parsed.y || 0), 0);
+        return total > 0 ? `Total: ${total}` : undefined;
       },
     };
 
-    const datasets = [
-      {
+    // Build one dataset per active modality
+    const datasets = activeModalities.map(mod => {
+      const mc = MOD_COLORS[mod] ?? MOD_COLORS.EEG;
+      const data = hasModalityData
+        ? series.map(m => m[mod] ?? 0)
+        : counts;  // fallback: plain count array treated as EEG
+      return {
         type:                 'bar',
-        label:                'EEGs reported',
-        data:                 counts,
-        backgroundColor:      bgColors,
-        hoverBackgroundColor: hoverColors,
-        borderRadius:         3,
+        label:                mod,
+        data,
+        backgroundColor:      series.map((_, i) =>
+          (futureStart != null && i >= futureStart) ? mc.ghost : mc.solid
+        ),
+        hoverBackgroundColor: series.map((_, i) =>
+          (futureStart != null && i >= futureStart) ? mc.ghost : mc.hover
+        ),
+        borderRadius:         stacked ? 0 : 3,
         borderSkipped:        false,
+        stack:                'reports',
         order:                2,
-      },
-    ];
+      };
+    });
 
     // Reference line: required monthly rate to hit target
     if (requiredRate != null) {
-      const refColor = _refColor(status);
       datasets.push({
-        type:          'line',
-        label:         '_ref_hidden',          // hidden from legend & tooltip filter
-        data:          Array(labels.length).fill(requiredRate),
-        borderColor:   refColor,
-        borderWidth:   1.5,
-        borderDash:    [6, 4],
-        pointRadius:   0,
-        fill:          false,
-        tension:       0,
-        order:         1,
+        type:        'line',
+        label:       '_ref_hidden',
+        data:        Array(labels.length).fill(requiredRate),
+        borderColor: _refColor(status),
+        borderWidth: 1.5,
+        borderDash:  [6, 4],
+        pointRadius: 0,
+        fill:        false,
+        tension:     0,
+        order:       1,
       });
     }
 
@@ -177,45 +221,55 @@ const Charts = (() => {
 
   /* ── Unit summary line chart (department view) ────────────────────── */
   /**
+   * Renders one line per modality.
+   *
    * @param {HTMLCanvasElement} canvas
-   * @param {string[]}          labels  — month labels
-   * @param {number[]}          data    — total EEG interactions per month
+   * @param {string[]}          labels     — month labels
+   * @param {object[]}          seriesData — [{ label, data: number[], color: '#hex' }, …]
    */
-  function renderUnitSummary(canvas, labels, data) {
+  function renderUnitSummary(canvas, labels, seriesData) {
     _destroyUnit();
 
-    const dataMax = Math.max(...data, 0);
-    const options = _baseOptions(dataMax);
+    const dataMax   = Math.max(0, ...seriesData.flatMap(s => s.data));
+    const options   = _baseOptions(dataMax);
+    const singleLine = seriesData.length === 1;
 
+    options.plugins.legend = {
+      display:  !singleLine,
+      position: 'top',
+      labels:   { boxWidth: 12, boxHeight: 12, padding: 14, font: { size: 12 } },
+    };
     options.plugins.tooltip.callbacks = {
       title: ctx => ctx[0]?.label ?? '',
-      label: ctx => `${ctx.parsed.y} EEG${ctx.parsed.y !== 1 ? 's' : ''}`,
+      label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}`,
     };
 
     _unitChart = new Chart(canvas, {
       type: 'line',
       data: {
         labels,
-        datasets: [{
-          label:              'Total EEGs',
-          data,
-          borderColor:        C.blue,
-          borderWidth:        2,
-          pointRadius:        3,
-          pointHoverRadius:   5,
-          pointBackgroundColor: C.blue,
-          fill:               true,
-          backgroundColor:    ctx => {
-            const { chart } = ctx;
-            const { ctx: chartCtx, chartArea } = chart;
-            if (!chartArea) return 'rgba(37,99,235,0.10)';
-            const gradient = chartCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(37,99,235,0.18)');
-            gradient.addColorStop(1, 'rgba(37,99,235,0.02)');
-            return gradient;
-          },
-          tension:            0.3,
-        }],
+        datasets: seriesData.map(s => ({
+          label:               s.label,
+          data:                s.data,
+          borderColor:         s.color,
+          borderWidth:         2,
+          pointRadius:         3,
+          pointHoverRadius:    5,
+          pointBackgroundColor: s.color,
+          fill:                singleLine,
+          backgroundColor:     singleLine
+            ? ctx => {
+                const { chart } = ctx;
+                const { ctx: chartCtx, chartArea } = chart;
+                if (!chartArea) return _hexToRgba(s.color, 0.10);
+                const gradient = chartCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                gradient.addColorStop(0, _hexToRgba(s.color, 0.18));
+                gradient.addColorStop(1, _hexToRgba(s.color, 0.02));
+                return gradient;
+              }
+            : 'transparent',
+          tension: 0.3,
+        })),
       },
       options,
     });
@@ -229,7 +283,8 @@ const Charts = (() => {
     renderMonthlyBar,
     renderUnitSummary,
     destroy: _destroyAll,
-    COLORS: C,
+    COLORS:  C,
+    MOD_COLORS,
   };
 
 })();

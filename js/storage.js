@@ -79,6 +79,7 @@ const Storage = (() => {
       date:        r.date.toISOString(),
       assistants:  r.assistants,
       consultants: r.consultants,
+      modality:    r.modality || 'EEG',
     }));
 
     const dataPayload = JSON.stringify({
@@ -133,6 +134,7 @@ const Storage = (() => {
       date:        new Date(r.date),
       assistants:  r.assistants,
       consultants: r.consultants,
+      modality:    r.modality || 'EEG',   // backward compat with pre-modality snapshots
     }));
 
     const meta = {

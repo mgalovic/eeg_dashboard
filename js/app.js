@@ -138,11 +138,11 @@ const App = (() => {
       const title = proj.total >= proj.target
         ? 'Target Reached'
         : `Period Ended — ${proj.pctActual}% of Target`;
-      const desc  = `Reported ${proj.total.toLocaleString()} EEGs (target: ${proj.target.toLocaleString()}).`;
+      const desc  = `Reported ${proj.total.toLocaleString()} reports (target: ${proj.target.toLocaleString()}).`;
       return { title, desc };
     }
 
-    let desc = `Projected ${proj.projected.toLocaleString()} EEGs by ${periodEndStr} — ${proj.pctProjected}% of ${proj.target} target.`;
+    let desc = `Projected ${proj.projected.toLocaleString()} reports by ${periodEndStr} — ${proj.pctProjected}% of ${proj.target} target.`;
     if (proj.status !== 'green' && proj.requiredAdditionalRate != null) {
       const extra = Math.ceil(proj.requiredAdditionalRate - proj.ratePerMonth);
       if (extra > 0) desc += ` Needs ${extra} more/month than current pace.`;
@@ -514,7 +514,7 @@ const App = (() => {
     const avg      = activeMo > 0 ? (total / activeMo).toFixed(1) : '—';
 
     const chips = [
-      { value: total.toLocaleString(),                              label: 'Total EEGs',          cls: 'blue' },
+      { value: total.toLocaleString(),                              label: 'Total Reports',        cls: 'blue' },
       { value: proj ? proj.projected.toLocaleString() : '—',       label: `Projected (${periodMonths} mo)`, cls: proj?.status ?? '' },
       { value: fmtRate(proj?.ratePerMonth),                         label: 'Current pace',        cls: '' },
       { value: proj && !proj.isExpired ? proj.daysRemaining + 'd' : (proj?.isExpired ? 'Ended' : '—'), label: 'Days remaining', cls: '' },
@@ -542,7 +542,7 @@ const App = (() => {
     Charts.renderMonthlyBar(
       dom.monthlyChart,
       series.map(m => fmtMonthLabel(m.year, m.month)),
-      series.map(m => m.count),
+      series,   // full objects with EEG/SEP/AEP/VEP breakdown
       {
         futureStart:  futureStart >= 0 ? futureStart : undefined,
         requiredRate: proj?.requiredMonthlyRate,
@@ -649,16 +649,24 @@ const App = (() => {
     });
   }
 
-  /** Render the unit monthly line chart — EEG records per month involving any filtered doctor. */
+  /** Render the unit monthly line chart — reports per month, separate line per modality. */
   function renderUnitSummaryChart() {
     if (!activeDataset) return;
-    const doctors = getFilteredDoctors(activeDataset.records, activeDataset.meta);
-    const series  = Parser.getUnitMonthlySeries(activeDataset.records, doctors);
-    Charts.renderUnitSummary(
-      dom.unitChart,
-      series.map(m => fmtMonthLabel(m.year, m.month)),
-      series.map(m => m.count)
-    );
+    const doctors      = getFilteredDoctors(activeDataset.records, activeDataset.meta);
+    const series       = Parser.getUnitMonthlySeriesByModality(activeDataset.records, doctors);
+    const labels       = series.map(m => fmtMonthLabel(m.year, m.month));
+
+    const MOD_COLORS   = { EEG: '#2563eb', SEP: '#059669', AEP: '#ea580c', VEP: '#7c3aed' };
+    const MOD_ORDER    = ['EEG', 'SEP', 'AEP', 'VEP'];
+    const activeMods   = MOD_ORDER.filter(mod => series.some(m => (m[mod] ?? 0) > 0));
+
+    const seriesData = activeMods.map(mod => ({
+      label: mod,
+      data:  series.map(m => m[mod] ?? 0),
+      color: MOD_COLORS[mod],
+    }));
+
+    Charts.renderUnitSummary(dom.unitChart, labels, seriesData);
   }
 
   /** Export the overview table as a UTF-8 CSV file. */
@@ -666,7 +674,7 @@ const App = (() => {
     if (!activeDataset) return;
     const { records, meta } = activeDataset;
 
-    const header = ['Name', 'First Report', 'Total EEGs', 'Avg per Month', 'Projected Total', 'Status'];
+    const header = ['Name', 'First Report', 'Total Reports', 'Avg per Month', 'Projected Total', 'Status'];
     const dataRows = meta.assistants.map(name => {
       const range   = Parser.dateRangeForDoctor(records, name);
       const total   = Parser.totalForDoctor(records, name);
@@ -846,6 +854,7 @@ const App = (() => {
             date:        new Date(r.date),
             assistants:  r.assistants  ?? [],
             consultants: r.consultants ?? [],
+            modality:    r.modality    || 'EEG',
           }));
           const meta = {
             ...payload.meta,
@@ -935,6 +944,7 @@ const App = (() => {
         date:        r.date.toISOString(),
         assistants:  r.assistants,
         consultants: r.consultants,
+        modality:    r.modality || 'EEG',
       })),
     };
 

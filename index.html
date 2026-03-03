@@ -47,8 +47,8 @@
           <h2 class="upload-title">Upload EEG Report Export</h2>
           <p class="upload-desc">Drag and drop your Excel file here, or click to browse</p>
           <p class="upload-hint">
-            Export from <strong>Alles1</strong> in the MS Access EEG database — past 24 months.<br>
-            Required columns: <code>Datum</code> · <code>AA</code> · <code>OA</code><br>
+            Export from <strong>Alles1</strong> in the MS Access database — past 24 months.<br>
+            Required columns: <code>Modality</code> · <code>Date</code> · <code>AA</code> · <code>OA</code> · <code>VISUM</code><br>
             Or reload a previously downloaded <code>.json</code> snapshot.<br>
             <span class="upload-privacy">&#9888; Never upload identifiable patient data!</span>
           </p>
@@ -79,9 +79,51 @@
           <li>Paste the following query into the editor:</li>
         </ol>
         <div class="sql-wrap">
-          <pre class="sql-block">SELECT CIPBericht_EEG.Datum, CIPBericht_EEG.AA, CIPBericht_EEG.OA
-FROM CIPBericht_EEG
-WHERE (((CIPBericht_EEG.Datum)&gt;Now()-(2*365)));</pre>
+          <pre class="sql-block">SELECT *
+FROM (
+   SELECT
+       "EEG" AS Modality,
+       DateValue(CIPBericht_EEG.Datum) AS [Date],
+       CIPBericht_EEG.AA               AS AA,
+       CIPBericht_EEG.OA               AS OA,
+       CIPBericht_EEG.VISUM            AS VISUM
+   FROM CIPBericht_EEG
+   WHERE CIPBericht_EEG.Datum &gt; DateAdd("yyyy",-2,Now())
+
+   UNION ALL
+
+   SELECT
+       "AEP" AS Modality,
+       DateValue(Bericht_AEP.DAT)      AS [Date],
+       Bericht_AEP.Visum1DisplayName   AS AA,
+       Bericht_AEP.Visum2DisplayName   AS OA,
+       Bericht_AEP.SEENVIS             AS VISUM
+   FROM Bericht_AEP
+   WHERE Bericht_AEP.DAT &gt; DateAdd("yyyy",-2,Now())
+
+   UNION ALL
+
+   SELECT
+       "SEP" AS Modality,
+       DateValue(Bericht_SEP.DAT)      AS [Date],
+       Null                            AS AA,
+       Null                            AS OA,
+       Bericht_SEP.SEENVIS             AS VISUM
+   FROM Bericht_SEP
+   WHERE Bericht_SEP.DAT &gt; DateAdd("yyyy",-2,Now())
+
+   UNION ALL
+
+   SELECT
+       "VEP" AS Modality,
+       DateValue(Bericht_VEP.DAT)      AS [Date],
+       Bericht_VEP.VisumAA             AS AA,
+       Bericht_VEP.VisumOA             AS OA,
+       Bericht_VEP.SEENVIS             AS VISUM
+   FROM Bericht_VEP
+   WHERE Bericht_VEP.DAT &gt; DateAdd("yyyy",-2,Now())
+) AS Q
+ORDER BY Q.[Date] DESC;</pre>
         </div>
         <ol class="instructions-steps" start="4">
           <li>Save the query (<kbd>Ctrl</kbd>+<kbd>S</kbd>)</li>
@@ -253,7 +295,7 @@ WHERE (((CIPBericht_EEG.Datum)&gt;Now()-(2*365)));</pre>
 
             <!-- Bar chart -->
             <div class="chart-section">
-              <p class="chart-label">EEG reports per month</p>
+              <p class="chart-label">Reports per month</p>
               <div class="chart-wrap">
                 <canvas id="monthly-chart"></canvas>
               </div>
@@ -276,7 +318,7 @@ WHERE (((CIPBericht_EEG.Datum)&gt;Now()-(2*365)));</pre>
 
           <!-- Unit monthly summary chart -->
           <div class="chart-section">
-            <p class="chart-label">Total EEG reports per month (all assistant doctors)</p>
+            <p class="chart-label">Total reports per month by modality (all assistant doctors)</p>
             <div class="chart-wrap">
               <canvas id="unit-chart"></canvas>
             </div>
@@ -290,7 +332,7 @@ WHERE (((CIPBericht_EEG.Datum)&gt;Now()-(2*365)));</pre>
                 <tr>
                   <th class="sortable" data-col="name">Name <span class="sort-arrow"></span></th>
                   <th class="sortable" data-col="first">First Report <span class="sort-arrow"></span></th>
-                  <th class="sortable num" data-col="total">Total EEGs <span class="sort-arrow"></span></th>
+                  <th class="sortable num" data-col="total">Total Reports <span class="sort-arrow"></span></th>
                   <th class="sortable num" data-col="avg">Avg / Month <span class="sort-arrow"></span></th>
                   <th class="sortable num" data-col="projected">Projected <span class="sort-arrow"></span></th>
                   <th class="sortable" data-col="status">Status <span class="sort-arrow"></span></th>
