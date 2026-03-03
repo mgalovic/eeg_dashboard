@@ -68,7 +68,28 @@
           <ul class="snapshot-list" id="snapshot-list"></ul>
         </div>
 
-      </div>
+      </div><!-- /upload-card -->
+
+      <!-- How to export from Alles1 -->
+      <div class="instructions-card">
+        <h3 class="instructions-title">How to export from Alles1 (MS&nbsp;Access)</h3>
+        <ol class="instructions-steps">
+          <li>Open the <strong>Alles1</strong> database in MS&nbsp;Access</li>
+          <li>Click <strong>Erstellen</strong> &rarr; <strong>SQL-Abfrage</strong></li>
+          <li>Paste the following query into the editor:</li>
+        </ol>
+        <div class="sql-wrap">
+          <pre class="sql-block">SELECT CIPBericht_EEG.Datum, CIPBericht_EEG.AA, CIPBericht_EEG.OA
+FROM CIPBericht_EEG
+WHERE (((CIPBericht_EEG.Datum)&gt;Now()-(2*365)));</pre>
+        </div>
+        <ol class="instructions-steps" start="4">
+          <li>Run the query (red <strong>!</strong> button or <kbd>F5</kbd>)</li>
+          <li>Click <strong>Externe Daten</strong> &rarr; <strong>Excel</strong> and save the file</li>
+          <li>Upload the saved <code>.xlsx</code> file above</li>
+        </ol>
+      </div><!-- /instructions-card -->
+
     </main>
 
   </div><!-- /screen-upload -->
